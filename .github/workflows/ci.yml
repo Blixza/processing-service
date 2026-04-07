@@ -20,7 +20,7 @@ jobs:
         ports:
           - 5433:5432
         volumes:
-          - ${{ github.workspace }}/migrations:/docker-entrypoint-initdb.d
+          - ${{ github.workspace }}migrations:/docker-entrypoint-initdb.d
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -71,5 +71,7 @@ jobs:
           DB_NAME: assets_db
           DB_HOST: localhost
           DB_PORT: 5433
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
           RABBITMQ_URL: amqp://guest:guest@localhost:5672/
         run: go test -v -race ./...
