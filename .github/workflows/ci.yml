@@ -74,4 +74,9 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           RABBITMQ_URL: amqp://guest:guest@localhost:5672/
-        run: go test -v -race ./...
+        run: |
+          sleep 3 
+          
+          psql -h localhost -p 5433 -U user -d assets_db -f migrations/schema.sql
+          
+          go test -v -race ./...
