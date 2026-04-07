@@ -23,7 +23,7 @@ func SendWebhook(log *zap.Logger, url string, data WebhookPayload) {
 
 	body, _ := json.Marshal(data)
 
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{Timeout: 5 * time.Second} //nolint:mnd
 
 	resp, err := client.Post(url, "application/json", bytes.NewBuffer(body))
 	if err != nil {

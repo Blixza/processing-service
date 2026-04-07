@@ -36,6 +36,7 @@ func (r *repo) CreateJob(ctx context.Context, job domain.Job) error {
 	}
 
 	_, err = r.infra.DB.Exec(ctx, query, args...)
+
 	return err
 }
 
@@ -44,6 +45,8 @@ func (r *repo) UpdateStatus(ctx context.Context, id string, status string) error
 	if err != nil {
 		return err
 	}
+	
 	_, err = r.infra.DB.Exec(ctx, query, args...)
+
 	return err
 }

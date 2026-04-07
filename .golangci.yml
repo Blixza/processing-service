@@ -3,3 +3,9 @@ linters:
   default: fast
   disable:
     - errcheck
+    - godox
+    - depguard
+    - lll
+    - mnd
+    - cyclop
+    - funlen

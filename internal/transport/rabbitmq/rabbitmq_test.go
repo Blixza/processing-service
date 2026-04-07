@@ -1,4 +1,4 @@
-package rabbitmq
+package rabbitmq //nolint:testpackage
 
 import (
 	"main/config"

@@ -1,4 +1,4 @@
-package database
+package database //nolint:testpackage
 
 import (
 	"main/config"
@@ -20,6 +20,7 @@ func TestJobRepository_CreateJob(t *testing.T) {
 	setEnv(t)
 
 	dbCfg := config.NewDBConfig()
+
 	infra, err := InitInfrastructure(t.Context(), dbCfg.Dsn())
 	if err != nil {
 		t.Fatalf("Failed to connect to DB: %v", err)
@@ -43,6 +44,7 @@ func TestJobRepository_UpdateStatus(t *testing.T) {
 	setEnv(t)
 
 	dbCfg := config.NewDBConfig()
+
 	infra, err := InitInfrastructure(t.Context(), dbCfg.Dsn())
 	if err != nil {
 		t.Fatalf("Failed to connect to DB: %v", err)
@@ -96,10 +98,12 @@ func TestJobRepository_UpdateStatus(t *testing.T) {
 
 			if !tt.wantErr && tt.jobID == job.ID {
 				var status string
+
 				err = infra.DB.QueryRow(ctx, "SELECT status FROM jobs WHERE id = $1", tt.jobID).Scan(&status)
 				if err != nil {
 					t.Fatalf("Failed to verify status: %v", err)
 				}
+
 				if status != tt.newStatus {
 					t.Errorf("Expected status %s, got %s", tt.newStatus, status)
 				}

@@ -11,6 +11,7 @@ import (
 
 func NewLogger(cfg *config.LoggerConfig) *zap.Logger {
 	var config zap.Config
+
 	switch cfg.Level {
 	case "prod":
 		config = zap.NewProductionConfig()

@@ -1,4 +1,4 @@
-package processor
+package processor //nolint:testpackage
 
 import (
 	"main/internal/domain/filter"

@@ -59,6 +59,7 @@ func ProcessImage(sourceURL string, filename string, filters ...filter.Filter) e
 			if w == 0 || h == 0 {
 				return fmt.Errorf("resize dimensions are incorrect. Must be 'width' and 'height'")
 			}
+
 			img = imaging.Resize(img, int(w), int(h), imaging.Linear) // TODO
 		case filter.FilterFit:
 			w, _ := f.Params["width"].(int)
@@ -74,7 +75,7 @@ func ProcessImage(sourceURL string, filename string, filters ...filter.Filter) e
 		outDir := "storage"
 		outPath := filepath.Join(outDir, filename)
 
-		err = os.MkdirAll(outDir, 0755)
+		err = os.MkdirAll(outDir, 0755) //nolint:mnd
 		if err != nil {
 			return err
 		}

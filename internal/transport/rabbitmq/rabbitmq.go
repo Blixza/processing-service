@@ -98,6 +98,7 @@ func (r *RabbitHandler) ConsumeJobs(ctx context.Context, log *zap.Logger, infra 
 			select {
 			case <-ctx.Done():
 				log.Info("Context cancelled, stopping consumer loop")
+
 				return
 			case d, ok := <-msgs:
 				if !ok {
@@ -105,12 +106,14 @@ func (r *RabbitHandler) ConsumeJobs(ctx context.Context, log *zap.Logger, infra 
 				}
 
 				wg.Add(1)
+
 				go func(d amqp.Delivery) {
 					defer wg.Done()
 
 					now := time.Now()
 
 					var job domain.Job
+
 					err := json.Unmarshal(d.Body, &job)
 					if err != nil {
 						log.Error("Error encoding job", zap.String("job id", job.ID), zap.Error(err))
@@ -118,9 +121,11 @@ func (r *RabbitHandler) ConsumeJobs(ctx context.Context, log *zap.Logger, infra 
 					}
 
 					finalStatus := "completed"
+
 					err = r.ProcessJob(context.Background(), log, job, infra)
 					if err != nil {
 						log.Error("Failed to process job", zap.String("job id", job.ID), zap.Error(err))
+
 						finalStatus = "failed"
 					}
 
@@ -155,6 +160,7 @@ func (r *RabbitHandler) ProcessJob(ctx context.Context, log *zap.Logger, job dom
 	if err != nil {
 		log.Error("Failed to update job status", zap.String("job id", job.ID), zap.String("new status", "processing"))
 	}
+
 	cmd := infra.Redis.Set(ctx, statusKey, "processing", 0)
 	if cmd.Err() != nil {
 		log.Error("Redis: failed to update job status", zap.String("job id", job.ID), zap.String("new status", "processing"), zap.Error(err))
@@ -163,6 +169,7 @@ func (r *RabbitHandler) ProcessJob(ctx context.Context, log *zap.Logger, job dom
 	finalStatus := "completed"
 
 	var processError error
+
 	switch job.Type {
 	case domain.JobTypePing:
 		log.Info("Got ping job", zap.String("id", job.ID))
@@ -171,9 +178,11 @@ func (r *RabbitHandler) ProcessJob(ctx context.Context, log *zap.Logger, job dom
 		filename := generateFilename(job)
 
 		var filters []filter.Filter
+
 		err := json.Unmarshal([]byte(job.Payload), &filters)
 		if err != nil {
 			log.Error("Unmarshaling filters failed", zap.String("job id", job.ID), zap.Error(err))
+
 			return err
 		}
 
@@ -195,6 +204,7 @@ func (r *RabbitHandler) ProcessJob(ctx context.Context, log *zap.Logger, job dom
 		if err != nil {
 			log.Error("Failed to update job status", zap.String("job id", job.ID), zap.String("new status", "failed"), zap.Error(err))
 		}
+
 		finalStatus = "failed"
 	} else {
 		err = repo.UpdateStatus(ctx, job.ID, "completed")
@@ -213,6 +223,7 @@ func (r *RabbitHandler) ProcessJob(ctx context.Context, log *zap.Logger, job dom
 
 func generateFilename(job domain.Job) string {
 	filename := job.ID
+
 	if job.Filename != "" {
 		b := strings.Builder{}
 		b.WriteString(filename)

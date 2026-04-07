@@ -26,7 +26,7 @@ func NewDBConfig() DBConfig {
 }
 
 func (c *DBConfig) Dsn() string {
-	return fmt.Sprintf(
+	return fmt.Sprintf( //nolint:nosprintfhostport
 		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		c.User, c.Password, c.Host, c.Port, c.Name, c.SSLMode,
 	)

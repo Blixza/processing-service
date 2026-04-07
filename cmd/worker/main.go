@@ -34,21 +34,25 @@ func main() {
 	l := logger.NewLogger(&logCfg)
 
 	dbCfg := config.NewDBConfig()
+
 	infra, err := database.InitInfrastructure(ctx, dbCfg.Dsn())
 	if err != nil {
 		l.Fatal("Worker Infra Error", zap.Error(err))
 	}
 
 	rmqCfg := config.NewRabbitMQConfig()
+
 	rabbit, err := rabbitmq.NewRabbitHandler(rmqCfg.Dsn())
 	if err != nil {
 		l.Fatal("Worker RabbitMQ Error", zap.Error(err))
 	}
+
 	defer rabbit.Conn.Close()
 
 	l.Info("Worker started. Listening for messages...")
 
 	var wg sync.WaitGroup
+
 	err = rabbit.ConsumeJobs(ctx, l, infra, &wg)
 	if err != nil {
 		l.Fatal("Failed to start consumer", zap.Error(err))
@@ -64,6 +68,7 @@ func main() {
 		proto.RegisterWorkerServiceServer(s, &worker.GrpcServer{WorkerId: "worker-01", Log: l})
 
 		l.Info("gRPC listening on :50051")
+
 		err = s.Serve(lis)
 		if err != nil {
 			l.Fatal("Failed to serve gRPC", zap.Error(err))
@@ -73,6 +78,7 @@ func main() {
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
 		l.Info("Metrics available at :2112/metrics")
+
 		err := http.ListenAndServe(":2112", nil)
 		if err != nil {
 			l.Fatal("Failed to listen for metrics", zap.Error(err))

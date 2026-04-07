@@ -31,9 +31,10 @@ import (
 	"go.uber.org/zap"
 )
 
-func main() {
+func main() { //nolint:funlen
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal(err)
@@ -44,19 +45,23 @@ func main() {
 
 	dbCfg := config.NewDBConfig()
 	infra, err := database.InitInfrastructure(ctx, dbCfg.Dsn())
+
 	if err != nil {
 		l.Fatal("Failed to init DB", zap.Error(err)) // TODO log
 	}
 
 	rmqCfg := config.NewRabbitMQConfig()
 	rabbit, err := rabbitmq.NewRabbitHandler(rmqCfg.Dsn())
+
 	if err != nil {
 		l.Fatal("Failed to init RabbitMQ", zap.Error(err)) // TODO log
 	}
+
 	defer rabbit.Conn.Close()
 
 	clientTarget := "localhost:50051"
 	workerClient, err := worker.NewWorkerClient(clientTarget)
+
 	if err != nil {
 		l.Fatal("Failed to create worker client", zap.String("worker client target", clientTarget), zap.Error(err))
 	}
@@ -65,8 +70,10 @@ func main() {
 
 	http.HandleFunc("/process/status", func(w http.ResponseWriter, r *http.Request) {
 		status, err := workerClient.GetStatus(r.Context())
+
 		if err != nil {
-			http.Error(w, "Worker unreachable: "+err.Error(), 500)
+			http.Error(w, "Worker unreachable: "+err.Error(), http.StatusInternalServerError)
+
 			return
 		}
 
@@ -93,6 +100,7 @@ func main() {
 
 	go func() {
 		l.Info("Server starting", zap.String("port", httpServer.Addr))
+
 		err = http.ListenAndServe(httpServer.Addr, nil)
 		if err != nil {
 			l.Fatal("Failed to start server", zap.String("port", httpServer.Addr), zap.Error(err))
@@ -102,7 +110,7 @@ func main() {
 	<-ctx.Done()
 	l.Info("Gracefully shutting down...")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second) //nolint:mnd
 	defer cancel()
 
 	err = httpServer.Shutdown(shutdownCtx)

@@ -11,6 +11,7 @@ import (
 
 type GrpcServer struct {
 	worker.UnimplementedWorkerServiceServer
+
 	WorkerId string
 	Log      *zap.Logger
 }
@@ -29,7 +30,7 @@ func (s *GrpcServer) StreamJobLogs(req *worker.LogRequest, stream worker.WorkerS
 	for i := 1; i <= 5; i++ {
 		resp := &worker.LogResponse{
 			Line:               fmt.Sprintf("Processing chunk %d of 5...", i),
-			ProgressPercentage: int32(i * 20),
+			ProgressPercentage: int32(i * 20), //nolint:mnd
 			Timestamp:          time.Now().Format(time.RFC3339),
 		}
 
@@ -37,7 +38,8 @@ func (s *GrpcServer) StreamJobLogs(req *worker.LogRequest, stream worker.WorkerS
 		if err != nil {
 			return err
 		}
-		time.Sleep(1 * time.Second)
+
+		time.Sleep(1 * time.Second) //nolint:mnd
 	}
 
 	return nil

@@ -22,7 +22,7 @@ func NewRabbitMQConfig() RabbitMQConfig {
 }
 
 func (c *RabbitMQConfig) Dsn() string {
-	return fmt.Sprintf(
+	return fmt.Sprintf( //nolint:nosprintfhostport
 		"amqp://%s:%s@%s:%s/",
 		c.User, c.Password, c.Host, c.Port,
 	)
