@@ -66,6 +66,7 @@ jobs:
 
       - name: Run Tests
         env:
+          PGPASSWORD: password
           DB_USER: user
           DB_PASSWORD: password
           DB_NAME: assets_db
