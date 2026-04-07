@@ -2,6 +2,7 @@ package callback
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -16,16 +17,21 @@ type WebhookPayload struct {
 	FinishedAt string `json:"finished_at"`
 }
 
-func SendWebhook(log *zap.Logger, url string, data WebhookPayload) {
+func SendWebhook(ctx context.Context, log *zap.Logger, url string, timeoutSec int, data WebhookPayload) {
 	if url == "" {
 		return
 	}
 
 	body, _ := json.Marshal(data)
 
-	client := &http.Client{Timeout: 5 * time.Second} //nolint:mnd
+	client := &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
 
-	resp, err := client.Post(url, "application/json", bytes.NewBuffer(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, url, bytes.NewBuffer(body))
+	if err != nil {
+		log.Error("Failed to create a request", zap.String("url", url), zap.Error(err))
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Error("Failed to send webhook", zap.String("url", url), zap.Error(err))
 	}

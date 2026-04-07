@@ -1,22 +1,22 @@
 package filter
 
-type FilterType string
+type Type string
 
 const (
-	FilterGrayscale  FilterType = "grayscale"
-	FilterInvert     FilterType = "invert"
-	FilterBrightness FilterType = "brightness"
-	FilterContrast   FilterType = "contrast"
+	FilterGrayscale  Type = "grayscale"
+	FilterInvert     Type = "invert"
+	FilterBrightness Type = "brightness"
+	FilterContrast   Type = "contrast"
 
-	FilterGaussianBlur FilterType = "gaussian_blur"
-	FilterSharpen      FilterType = "sharpen"
-	FilterBoxBlur      FilterType = "box_blur"
+	FilterGaussianBlur Type = "gaussian_blur"
+	FilterSharpen      Type = "sharpen"
+	FilterBoxBlur      Type = "box_blur"
 
-	FilterResize FilterType = "resize"
-	FilterFit    FilterType = "fit"
+	FilterResize Type = "resize"
+	FilterFit    Type = "fit"
 )
 
 type Filter struct {
-	Type   FilterType     `json:"type"`
+	Type   Type           `json:"type"`
 	Params map[string]any `json:"params,omitempty"`
 }

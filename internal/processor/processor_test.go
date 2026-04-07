@@ -1,4 +1,4 @@
-package processor //nolint:testpackage
+package processor
 
 import (
 	"main/internal/domain/filter"
@@ -29,8 +29,13 @@ func TestProcessImage(t *testing.T) {
 		{
 			name:     "Resize Filter",
 			filename: "test_resize.jpg",
-			filters:  []filter.Filter{{Type: filter.FilterResize, Params: map[string]any{"width": 100.0, "height": 100.0}}},
-			wantErr:  false,
+			filters: []filter.Filter{{
+				Type: filter.FilterResize,
+				Params: map[string]any{
+					"width": 100.0, "height": 100.0,
+				},
+			}},
+			wantErr: false,
 		},
 		{
 			name:     "Invalid URL",
@@ -46,7 +51,7 @@ func TestProcessImage(t *testing.T) {
 				url = "http://invalid-url-12345.com"
 			}
 
-			err := ProcessImage(url, tt.filename, tt.filters...)
+			err := ProcessImage(t.Context(), url, tt.filename, tt.filters...)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ProcessImage() error = %v, wantErr %v", err, tt.wantErr)

@@ -19,7 +19,7 @@ type Server struct {
 	Log   *zap.Logger
 }
 
-// HandleProcess
+// HandleProcess ...
 // @Summary Create a new image processing job
 // @Description Accepts a URL and a callback, then queues an image for grayscale processing
 // @Tags jobs
@@ -80,15 +80,21 @@ func (s *Server) HandleProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write([]byte("Job Queued: " + newJob.ID))
+	_, err = w.Write([]byte("Job Queued: " + newJob.ID))
+	if err != nil {
+		s.Log.Error("Failed to write response", zap.String("job id", newJob.ID), zap.Error(err))
+	}
 }
 
-// HandlePing
+// HandlePing ...
 // @Summary Healthcheck
 // @Description Returns "pong"
 // @Router /ping [get].
 func (s *Server) HandlePing(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		w.Write([]byte("pong"))
+		_, err := w.Write([]byte("pong"))
+		if err != nil {
+			s.Log.Error("Failed to write response", zap.Error(err))
+		}
 	}
 }

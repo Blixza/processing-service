@@ -1,4 +1,4 @@
-package server //nolint:testpackage
+package server
 
 import (
 	"context"
@@ -15,7 +15,7 @@ type MockQueue struct {
 	Jobs []domain.Job
 }
 
-func (m *MockQueue) PublishJob(ctx context.Context, job domain.Job) error {
+func (m *MockQueue) PublishJob(_ context.Context, job domain.Job) error {
 	m.Jobs = append(m.Jobs, job)
 
 	return nil
@@ -25,13 +25,13 @@ type MockRepo struct {
 	CreatedJobs []domain.Job
 }
 
-func (m *MockRepo) CreateJob(ctx context.Context, job domain.Job) error {
+func (m *MockRepo) CreateJob(_ context.Context, job domain.Job) error {
 	m.CreatedJobs = append(m.CreatedJobs, job)
 
 	return nil
 }
 
-func (m *MockRepo) UpdateStatus(ctx context.Context, s1 string, s2 string) error {
+func (m *MockRepo) UpdateStatus(_ context.Context, _ string, _ string) error {
 	return nil
 }
 

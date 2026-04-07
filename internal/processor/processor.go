@@ -1,7 +1,8 @@
 package processor
 
 import (
-	"fmt"
+	"context"
+	"errors"
 	"image"
 	"image/jpeg"
 	"main/internal/domain/filter"
@@ -12,18 +13,32 @@ import (
 	"github.com/disintegration/imaging"
 )
 
-func ProcessImage(sourceURL string, filename string, filters ...filter.Filter) error {
-	resp, err := http.Get(sourceURL)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+func saveImage(img *image.Image, filename string) error {
+	outDir := "storage"
+	outPath := filepath.Join(outDir, filename)
 
-	img, _, err := image.Decode(resp.Body)
+	err := os.MkdirAll(outDir, 0750)
 	if err != nil {
 		return err
 	}
 
+	var f *os.File
+	f, err = os.Create(outPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	err = jpeg.Encode(f, *img, nil)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func processFilters(imgPtr *image.Image, filters ...filter.Filter) error {
+	img := *imgPtr
 	for _, f := range filters {
 		switch f.Type {
 		case filter.FilterGrayscale:
@@ -57,7 +72,7 @@ func ProcessImage(sourceURL string, filename string, filters ...filter.Filter) e
 			h, _ := f.Params["height"].(float64)
 
 			if w == 0 || h == 0 {
-				return fmt.Errorf("resize dimensions are incorrect. Must be 'width' and 'height'")
+				return errors.New("resize dimensions are incorrect. Must be 'width' and 'height'")
 			}
 
 			img = imaging.Resize(img, int(w), int(h), imaging.Linear) // TODO
@@ -66,30 +81,45 @@ func ProcessImage(sourceURL string, filename string, filters ...filter.Filter) e
 			h, _ := f.Params["height"].(int)
 
 			if w == 0 || h == 0 {
-				return fmt.Errorf("resize dimensions are incorrect. Must be 'width' and 'height'")
+				return errors.New("resize dimensions are incorrect. Must be 'width' and 'height'")
 			}
 
 			img = imaging.Fit(img, w, h, imaging.Linear)
 		}
 
-		outDir := "storage"
-		outPath := filepath.Join(outDir, filename)
+		*imgPtr = img
+	}
 
-		err = os.MkdirAll(outDir, 0755) //nolint:mnd
-		if err != nil {
-			return err
-		}
+	return nil
+}
 
-		f, err := os.Create(outPath)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
+func ProcessImage(ctx context.Context, sourceURL string, filename string, filters ...filter.Filter) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
+	if err != nil {
+		return err
+	}
 
-		err = jpeg.Encode(f, img, nil)
-		if err != nil {
-			return err
-		}
+	client := http.DefaultClient
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	img, _, err := image.Decode(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	err = processFilters(&img, filters...)
+	if err != nil {
+		return err
+	}
+
+	err = saveImage(&img, filename)
+	if err != nil {
+		return err
 	}
 
 	return nil

@@ -30,7 +30,7 @@ func InitInfrastructure(ctx context.Context, dsn string) (*Infrastructure, error
 	// TODO log
 
 	return &Infrastructure{
-		DB: db,
+		DB:    db,
 		Redis: rdb,
 	}, nil
 }

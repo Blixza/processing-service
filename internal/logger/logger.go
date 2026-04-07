@@ -1,8 +1,9 @@
 package logger
 
 import (
-	"log"
+	"log/slog"
 	"main/config"
+	"os"
 	"strings"
 
 	"go.uber.org/zap"
@@ -31,7 +32,9 @@ func NewLogger(cfg *config.LoggerConfig) *zap.Logger {
 
 	l, err := config.Build()
 	if err != nil {
-		log.Fatalf("Failed to initialize zap logger: %v", err)
+		handler := slog.NewJSONHandler(os.Stderr, nil)
+		logger := slog.New(handler)
+		logger.Error("Failed to initialize zap logger", "error", err)
 	}
 
 	return l

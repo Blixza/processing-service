@@ -41,11 +41,15 @@ func (r *repo) CreateJob(ctx context.Context, job domain.Job) error {
 }
 
 func (r *repo) UpdateStatus(ctx context.Context, id string, status string) error {
-	query, args, err := r.sb.Update("jobs").Set("status", status).Set("updated_at", time.Now()).Where(sq.Eq{"id": id}).ToSql()
+	query, args, err := r.sb.Update("jobs").
+		Set("status", status).
+		Set("updated_at", time.Now()).
+		Where(sq.Eq{"id": id}).
+		ToSql()
 	if err != nil {
 		return err
 	}
-	
+
 	_, err = r.infra.DB.Exec(ctx, query, args...)
 
 	return err

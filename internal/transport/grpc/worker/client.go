@@ -9,21 +9,21 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type WorkerClient struct {
+type Client struct {
 	client proto.WorkerServiceClient
 }
 
-func NewWorkerClient(target string) (*WorkerClient, error) {
+func NewWorkerClient(target string) (*Client, error) {
 	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return nil, fmt.Errorf("could not connect to worker: %v", err)
+		return nil, fmt.Errorf("could not connect to worker: %w", err)
 	}
 
-	return &WorkerClient{
+	return &Client{
 		client: proto.NewWorkerServiceClient(conn),
 	}, nil
 }
 
-func (c *WorkerClient) GetStatus(ctx context.Context) (*proto.StatusResponse, error) {
+func (c *Client) GetStatus(ctx context.Context) (*proto.StatusResponse, error) {
 	return c.client.GetWorkerStatus(ctx, &proto.StatusRequest{})
 }

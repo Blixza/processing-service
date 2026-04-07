@@ -79,7 +79,10 @@ func (r *RabbitHandler) PublishJob(ctx context.Context, job domain.Job) error {
 	)
 }
 
-func (r *RabbitHandler) ConsumeJobs(ctx context.Context, log *zap.Logger, infra *database.Infrastructure, wg *sync.WaitGroup) error {
+func (r *RabbitHandler) ConsumeJobs(
+	ctx context.Context, log *zap.Logger,
+	infra *database.Infrastructure, wg *sync.WaitGroup,
+) error {
 	msgs, err := r.Channel.Consume(
 		r.Queue.Name,
 		ConsumerTag, // consumer tag
@@ -104,45 +107,8 @@ func (r *RabbitHandler) ConsumeJobs(ctx context.Context, log *zap.Logger, infra 
 				if !ok {
 					return
 				}
-
 				wg.Add(1)
-
-				go func(d amqp.Delivery) {
-					defer wg.Done()
-
-					now := time.Now()
-
-					var job domain.Job
-
-					err := json.Unmarshal(d.Body, &job)
-					if err != nil {
-						log.Error("Error encoding job", zap.String("job id", job.ID), zap.Error(err))
-						d.Ack(false)
-					}
-
-					finalStatus := "completed"
-
-					err = r.ProcessJob(context.Background(), log, job, infra)
-					if err != nil {
-						log.Error("Failed to process job", zap.String("job id", job.ID), zap.Error(err))
-
-						finalStatus = "failed"
-					}
-
-					metrics.JobsProcessed.WithLabelValues(finalStatus, job.Type).Inc()
-					metrics.ProcessingDuration.Observe(time.Since(now).Seconds())
-
-					log.Info("Job completed", zap.String("job id", job.ID))
-
-					callback.SendWebhook(log, job.CallbackURL, callback.WebhookPayload{
-						JobID:      job.ID,
-						Status:     "completed",
-						Filename:   job.Filename,
-						FinishedAt: time.Now().Format(time.RFC3339),
-					})
-
-					d.Ack(false)
-				}(d)
+				go r.handleMessage(ctx, log, d, infra, wg)
 			}
 		}
 	}()
@@ -150,7 +116,61 @@ func (r *RabbitHandler) ConsumeJobs(ctx context.Context, log *zap.Logger, infra 
 	return nil
 }
 
-func (r *RabbitHandler) ProcessJob(ctx context.Context, log *zap.Logger, job domain.Job, infra *database.Infrastructure) error {
+func (r *RabbitHandler) handleMessage(
+	ctx context.Context, log *zap.Logger,
+	d amqp.Delivery, infra *database.Infrastructure,
+	wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	now := time.Now()
+
+	var job domain.Job
+
+	err := json.Unmarshal(d.Body, &job)
+	if err != nil {
+		log.Error("Error encoding job", zap.String("job id", job.ID), zap.Error(err))
+		err = d.Ack(false)
+		if err != nil {
+			log.Error("Failed to acknowledge rabbitmq delivery", zap.Error(err))
+		}
+	}
+
+	finalStatus := "completed"
+
+	err = r.ProcessJob(context.Background(), log, job, infra)
+	if err != nil {
+		log.Error("Failed to process job", zap.String("job id", job.ID), zap.Error(err))
+
+		finalStatus = "failed"
+	}
+
+	registry := metrics.NewRegistry()
+
+	registry.JobsProcessed.WithLabelValues(finalStatus, job.Type).Inc()
+	registry.ProcessingDuration.Observe(time.Since(now).Seconds())
+
+	log.Info("Job completed", zap.String("job id", job.ID))
+
+	callbackTimeoutSec := 5
+	callback.SendWebhook(ctx, log, job.CallbackURL, callbackTimeoutSec, callback.WebhookPayload{
+		JobID:      job.ID,
+		Status:     "completed",
+		Filename:   job.Filename,
+		FinishedAt: time.Now().Format(time.RFC3339),
+	})
+
+	err = d.Ack(false)
+	if err != nil {
+		log.Error("Failed to acknowledge rabbitmq delivery", zap.Error(err))
+	}
+}
+
+func (r *RabbitHandler) ProcessJob(
+	ctx context.Context,
+	log *zap.Logger,
+	job domain.Job,
+	infra *database.Infrastructure,
+) error {
 	repo := database.NewJobRepository(infra)
 	statusKey := fmt.Sprintf("job:%s:status", job.ID)
 
@@ -163,7 +183,12 @@ func (r *RabbitHandler) ProcessJob(ctx context.Context, log *zap.Logger, job dom
 
 	cmd := infra.Redis.Set(ctx, statusKey, "processing", 0)
 	if cmd.Err() != nil {
-		log.Error("Redis: failed to update job status", zap.String("job id", job.ID), zap.String("new status", "processing"), zap.Error(err))
+		log.Error(
+			"Redis: failed to update job status",
+			zap.String("job id", job.ID),
+			zap.String("new status", "processing"),
+			zap.Error(err),
+		)
 	}
 
 	finalStatus := "completed"
@@ -179,16 +204,16 @@ func (r *RabbitHandler) ProcessJob(ctx context.Context, log *zap.Logger, job dom
 
 		var filters []filter.Filter
 
-		err := json.Unmarshal([]byte(job.Payload), &filters)
+		err = json.Unmarshal([]byte(job.Payload), &filters)
 		if err != nil {
 			log.Error("Unmarshaling filters failed", zap.String("job id", job.ID), zap.Error(err))
 
 			return err
 		}
 
-		processError = processor.ProcessImage(job.SourceURL, filename, filters...)
+		processError = processor.ProcessImage(context.Background(), job.SourceURL, filename, filters...)
 		if processError != nil {
-			log.Error("Processing failed", zap.String("job id", job.ID), zap.Error(err))
+			log.Error("Processing failed", zap.String("job id", job.ID), zap.Error(processError))
 		} else {
 			log.Info("Image saved", zap.String("path", fmt.Sprintf("storage/%s", job.Filename)))
 		}
@@ -202,20 +227,34 @@ func (r *RabbitHandler) ProcessJob(ctx context.Context, log *zap.Logger, job dom
 	if processError != nil {
 		err = repo.UpdateStatus(ctx, job.ID, "failed")
 		if err != nil {
-			log.Error("Failed to update job status", zap.String("job id", job.ID), zap.String("new status", "failed"), zap.Error(err))
+			log.Error(
+				"Failed to update job status",
+				zap.String("job id", job.ID),
+				zap.String("new status", "failed"),
+				zap.Error(err),
+			)
 		}
 
 		finalStatus = "failed"
 	} else {
 		err = repo.UpdateStatus(ctx, job.ID, "completed")
 		if err != nil {
-			log.Error("Failed to update job status", zap.String("job id", job.ID), zap.String("new status", "completed"))
+			log.Error(
+				"Failed to update job status",
+				zap.String("job id", job.ID),
+				zap.String("new status", "completed"),
+			)
 		}
 	}
 
 	cmd = infra.Redis.Set(ctx, statusKey, finalStatus, 0)
 	if cmd.Err() != nil {
-		log.Error("Redis: failed to update job status", zap.String("job id", job.ID), zap.String("new status", finalStatus), zap.Error(err))
+		log.Error(
+			"Redis: failed to update job status",
+			zap.String("job id", job.ID),
+			zap.String("new status", finalStatus),
+			zap.Error(err),
+		)
 	}
 
 	return nil

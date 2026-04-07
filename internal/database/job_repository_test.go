@@ -1,4 +1,4 @@
-package database //nolint:testpackage
+package database //nolint:testpackage // will be fixed later
 
 import (
 	"main/config"
@@ -91,7 +91,7 @@ func TestJobRepository_UpdateStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := repo.UpdateStatus(ctx, tt.jobID, tt.newStatus)
+			err = repo.UpdateStatus(ctx, tt.jobID, tt.newStatus)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UpdateStatus() error = %v, wantErr %v", err, tt.wantErr)
 			}
