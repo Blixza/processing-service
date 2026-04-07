@@ -1,9 +1,5 @@
+version: "2"
 linters:
+  default: all
   disable:
     - errcheck
-
-issues:
-  exclude-rules:
-    - linters:
-      - errcheck
-      text: "Error return value of .*\\.Close is not checked"
