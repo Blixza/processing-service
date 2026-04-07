@@ -14,7 +14,7 @@ type WorkerClient struct {
 }
 
 func NewWorkerClient(target string) (*WorkerClient, error) {
-	conn, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to worker: %v", err)
 	}

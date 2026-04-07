@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"main/internal/database"
 	"main/internal/domain"
-	"main/internal/domain/filter"
 	"main/internal/domain/request"
 	"main/internal/transport/rabbitmq"
 	"net/http"
@@ -45,11 +44,6 @@ func (s *Server) HandleProcess(w http.ResponseWriter, r *http.Request) {
 	if (data.URL == "" || data.Callback == "") && data.JobType != "PING" {
 		http.Error(w, "URL and Callback are required in payload", 400)
 		return
-	}
-
-	var domainFilters []filter.Filter
-	for _, f := range data.Filters {
-		domainFilters = append(domainFilters, f)
 	}
 
 	payload, err := json.Marshal(data.Filters)
