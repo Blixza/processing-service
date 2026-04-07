@@ -1,0 +1,79 @@
+basePath: /
+definitions:
+  domain.Job:
+    properties:
+      callback_url:
+        type: string
+      created_at:
+        type: string
+      filename:
+        type: string
+      id:
+        type: string
+      payload:
+        type: string
+      source_url:
+        type: string
+      type:
+        type: string
+    type: object
+  main.ProcessRequest:
+    properties:
+      callback:
+        example: http://localhost:8081/ping
+        type: string
+      extra_info:
+        example: grayscale
+        type: string
+      filename:
+        example: my_image.jpg
+        type: string
+      job_type:
+        example: FILTER_IMAGE
+        type: string
+      url:
+        example: https://example.com/image.jpg
+        type: string
+    type: object
+host: localhost:8081
+info:
+  contact:
+    name: Blixza
+    url: https://github.com/Blixza
+  description: This is a distributed image processing service.
+  title: Image Processor API
+  version: "1.0"
+paths:
+  /ping:
+    get:
+      description: Returns "pong"
+      responses: {}
+      summary: Healthcheck
+  /process:
+    post:
+      consumes:
+      - application/json
+      description: Accepts a URL and a callback, then queues an image for grayscale
+        processing
+      parameters:
+      - description: Job details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.ProcessRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/domain.Job'
+        "400":
+          description: Invalid input
+          schema:
+            type: string
+      summary: Create a new image processing job
+      tags:
+      - jobs
+swagger: "2.0"

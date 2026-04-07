@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # 1. The Source of Truth
+  postgres:
+    image: postgres:16-alpine
+    container_name: backend_postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: assets_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. The Cache & Job Status Tracker
+  redis:
+    image: redis:7-alpine
+    container_name: backend_redis
+    ports:
+      - "6379:6379"
+
+  # 3. The Message Queue
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: backend_rabbitmq
+    ports:
+      - "5672:5672"   # RabbitMQ broker port
+      - "15672:15672" # Management UI port
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+  # 4. Metrics Scraper
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: backend_prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  # 5. Visualization Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: backend_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres_data:

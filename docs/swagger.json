@@ -1,0 +1,116 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "This is a distributed image processing service.",
+        "title": "Image Processor API",
+        "contact": {
+            "name": "Blixza",
+            "url": "https://github.com/Blixza"
+        },
+        "version": "1.0"
+    },
+    "host": "localhost:8081",
+    "basePath": "/",
+    "paths": {
+        "/ping": {
+            "get": {
+                "description": "Returns \"pong\"",
+                "summary": "Healthcheck",
+                "responses": {}
+            }
+        },
+        "/process": {
+            "post": {
+                "description": "Accepts a URL and a callback, then queues an image for grayscale processing",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "jobs"
+                ],
+                "summary": "Create a new image processing job",
+                "parameters": [
+                    {
+                        "description": "Job details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.ProcessRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/domain.Job"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "domain.Job": {
+            "type": "object",
+            "properties": {
+                "callback_url": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "filename": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "payload": {
+                    "type": "string"
+                },
+                "source_url": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "main.ProcessRequest": {
+            "type": "object",
+            "properties": {
+                "callback": {
+                    "type": "string",
+                    "example": "http://localhost:8081/ping"
+                },
+                "extra_info": {
+                    "type": "string",
+                    "example": "grayscale"
+                },
+                "filename": {
+                    "type": "string",
+                    "example": "my_image.jpg"
+                },
+                "job_type": {
+                    "type": "string",
+                    "example": "FILTER_IMAGE"
+                },
+                "url": {
+                    "type": "string",
+                    "example": "https://example.com/image.jpg"
+                }
+            }
+        }
+    }
+}

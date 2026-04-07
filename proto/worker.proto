@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package worker;
+
+option go_package = "main/internal/transport/grpc/worker";
+
+service WorkerService {
+    // quick health check
+    rpc GetWorkerStatus(StatusRequest) returns (StatusResponse) {}
+
+    rpc StreamJobLogs(LogRequest) returns (stream LogResponse) {}
+}
+
+message StatusRequest {}
+
+message StatusResponse {
+    string worker_id = 1;
+    string status = 2; // IDLE, BUSY
+    int32 active_jobs = 3;
+}
+
+message LogRequest {
+    string job_id = 1;
+}
+
+message LogResponse {
+    string line = 1;
+    int32 progress_percentage = 2;
+    string timestamp = 3;
+}
