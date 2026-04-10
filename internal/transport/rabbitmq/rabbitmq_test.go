@@ -12,7 +12,16 @@ import (
 	"go.uber.org/zap"
 )
 
+func setEnv(t *testing.T) {
+	t.Setenv("RABBITMQ_USER", "app")
+	t.Setenv("RABBITMQ_PASSWORD", "strongpassword")
+	t.Setenv("RABBITMQ_HOST", "0.0.0.0")
+	t.Setenv("RABBITMQ_PORT", "5672")
+}
+
 func TestProcessJob_Ping(t *testing.T) {
+	setEnv(t)
+
 	handler := &RabbitHandler{}
 	job := domain.Job{
 		ID:   uuid.New().String(),
@@ -36,6 +45,8 @@ func TestProcessJob_Ping(t *testing.T) {
 }
 
 func TestProcessJob_FilterImage(t *testing.T) {
+	setEnv(t)
+
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "../../../testdata/sample.jpg")
 	}))
