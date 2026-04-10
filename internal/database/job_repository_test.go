@@ -19,7 +19,7 @@ func setEnv(t *testing.T) {
 func TestJobRepository_CreateJob(t *testing.T) {
 	setEnv(t)
 
-	dbCfg, err := config.NewDBConfig(".env")
+	dbCfg, err := config.NewDBConfig("test.env")
 	if err != nil {
 		t.Fatalf("Failed to load DB config: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestJobRepository_CreateJob(t *testing.T) {
 func TestJobRepository_UpdateStatus(t *testing.T) {
 	setEnv(t)
 
-	dbCfg, err := config.NewDBConfig(".env")
+	dbCfg, err := config.NewDBConfig("test.env")
 	if err != nil {
 		t.Fatalf("Failed to load DB config: %v", err)
 	}

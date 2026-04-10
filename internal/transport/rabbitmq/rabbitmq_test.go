@@ -28,7 +28,7 @@ func TestProcessJob_Ping(t *testing.T) {
 		Type: domain.JobTypePing,
 	}
 
-	dbCfg, err := config.NewDBConfig(".env")
+	dbCfg, err := config.NewDBConfig("test.env")
 	if err != nil {
 		t.Fatalf("Failed to load DB config: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestProcessJob_FilterImage(t *testing.T) {
 		},
 	}
 
-	dbCfg, err := config.NewDBConfig(".env")
+	dbCfg, err := config.NewDBConfig("test.env")
 	if err != nil {
 		t.Fatalf("Failed to load DB config: %v", err)
 	}
