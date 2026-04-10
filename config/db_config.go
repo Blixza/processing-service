@@ -2,27 +2,33 @@ package config
 
 import (
 	"fmt"
-	"os"
+
+	"github.com/spf13/viper"
 )
 
 type DBConfig struct {
-	Name     string
-	User     string
-	Password string
-	Host     string
-	Port     string
-	SSLMode  string
+	Name     string `mapstructure:"DB_NAME"`
+	User     string `mapstructure:"DB_USER"`
+	Password string `mapstructure:"DB_PASSWORD"`
+	Host     string `mapstructure:"DB_HOST"`
+	Port     string `mapstructure:"DB_PORT"`
+	SSLMode  string `mapstructure:"DB_SSLMODE"`
 }
 
-func NewDBConfig() DBConfig {
-	return DBConfig{
-		Name:     os.Getenv("DB_NAME"),
-		User:     os.Getenv("DB_USER"),
-		Password: os.Getenv("DB_PASSWORD"),
-		Host:     os.Getenv("DB_HOST"),
-		Port:     os.Getenv("DB_PORT"),
-		SSLMode:  os.Getenv("DB_SSLMODE"),
+func NewDBConfig(path string) (DBConfig, error) {
+	var cfg DBConfig
+
+	viper.SetConfigFile(path)
+
+	viper.AutomaticEnv()
+
+	err := viper.ReadInConfig()
+	if err != nil {
+		return cfg, err
 	}
+
+	err = viper.Unmarshal(&cfg)
+	return cfg, err
 }
 
 func (c *DBConfig) Dsn() string {

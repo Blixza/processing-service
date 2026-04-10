@@ -33,19 +33,31 @@ func main() {
 		return
 	}
 
-	logCfg := config.NewLoggerConfig()
+	logCfg, err := config.NewLoggerConfig(".env")
+	if err != nil {
+		log.Printf("Failed to load Logger config: %v", err)
+	}
 	l := logger.NewLogger(&logCfg)
 
-	serverCfg := config.NewServerConfig(l)
+	serverCfg, err := config.NewServerConfig(".env")
+	if err != nil {
+		l.Error("Failed to load Server config: %v", zap.Error(err))
+	}
 
-	dbCfg := config.NewDBConfig()
+	dbCfg, err := config.NewDBConfig(".env")
+	if err != nil {
+		l.Error("Failed to load DB config: %v", zap.Error(err))
+	}
 
 	infra, err := database.InitInfrastructure(ctx, dbCfg.Dsn())
 	if err != nil {
 		l.Fatal("Worker Infra Error", zap.Error(err))
 	}
 
-	rmqCfg := config.NewRabbitMQConfig()
+	rmqCfg, err := config.NewRabbitMQConfig(".env")
+	if err != nil {
+		l.Error("Failed to load RabbitMQ config: %v", zap.Error(err))
+	}
 
 	rabbit, err := rabbitmq.NewRabbitHandler(rmqCfg.Dsn())
 	if err != nil {

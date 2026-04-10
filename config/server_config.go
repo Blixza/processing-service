@@ -1,25 +1,21 @@
 package config
 
 import (
-	"fmt"
-	"os"
-	"strconv"
-
-	"go.uber.org/zap"
+	"github.com/spf13/viper"
 )
 
 type ServerConfig struct {
-	Port                 int
-	MetricsPort          int
-	GrpcPort             int
-	ShutdownTimeoutSec   int
-	ReadHeaderTimeoutSec int
-	ReadTimeoutSec       int
-	WriteTimeoutSec      int
-	IdleTimeoutSec       int
+	Port                 int `mapstructure:"SERVER_PORT"`
+	MetricsPort          int `mapstructure:"SERVER_METRICS_PORT"`
+	GrpcPort             int `mapstructure:"SERVER_GRPC_PORT"`
+	ShutdownTimeoutSec   int `mapstructure:"SERVER_SHUTDOWN_SEC"`
+	ReadHeaderTimeoutSec int `mapstructure:"SERVER_READ_HEADER_TIMEOUT_SEC"`
+	ReadTimeoutSec       int `mapstructure:"SERVER_READ_TIMEOUT_SEC"`
+	WriteTimeoutSec      int `mapstructure:"SERVER_WRITE_TIMEOUT_SEC"`
+	IdleTimeoutSec       int `mapstructure:"SERVER_IDLE_TIMEOUT_SEC"`
 }
 
-func NewServerConfig(log *zap.Logger) ServerConfig {
+func NewServerConfig(path string) (ServerConfig, error) {
 	cfg := ServerConfig{
 		Port:                 8081,  //nolint:mnd // default value
 		MetricsPort:          2112,  //nolint:mnd // default value
@@ -31,39 +27,15 @@ func NewServerConfig(log *zap.Logger) ServerConfig {
 		IdleTimeoutSec:       120,   //nolint:mnd // default value
 	}
 
-	if v := parse(log, "SERVER_PORT"); v != 0 {
-		cfg.Port = v
-	}
+	viper.SetConfigFile(path)
 
-	if v := parse(log, "SHUTDOWN_TIMEOUT_SEC"); v != 0 {
-		cfg.Port = v
-	}
+	viper.AutomaticEnv()
 
-	if v := parse(log, "READ_HEADER_TIMEOUT_SEC"); v != 0 {
-		cfg.Port = v
-	}
-
-	if v := parse(log, "READ_TIMEOUT_SEC"); v != 0 {
-		cfg.Port = v
-	}
-
-	if v := parse(log, "WRITE_TIMEOUT_SEC"); v != 0 {
-		cfg.Port = v
-	}
-
-	if v := parse(log, "IDLE_TIMEOUT_SEC"); v != 0 {
-		cfg.Port = v
-	}
-
-	return cfg
-}
-
-func parse(log *zap.Logger, key string) int {
-	value := os.Getenv(key)
-	parsed, err := strconv.Atoi(value)
+	err := viper.ReadInConfig()
 	if err != nil {
-		log.Error(fmt.Sprintf("Invalid %s env value", key), zap.Error(err))
+		return cfg, err
 	}
 
-	return parsed
+	err = viper.Unmarshal(&cfg)
+	return cfg, err
 }

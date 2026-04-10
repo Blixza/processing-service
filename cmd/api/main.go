@@ -11,6 +11,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"main/config"
@@ -44,6 +45,26 @@ func main() {
 	l, rabbit, infra, workerClient, serverCfg := initApp(ctx)
 	defer rabbit.Conn.Close()
 
+	mux := setupRoutes(l, rabbit, infra, workerClient)
+
+	httpServer := &http.Server{
+		Addr:              fmt.Sprintf(":%d", serverCfg.Port),
+		Handler:           mux,
+		ReadTimeout:       time.Duration(serverCfg.ReadTimeoutSec) * time.Second,
+		WriteTimeout:      time.Duration(serverCfg.WriteTimeoutSec) * time.Second,
+		IdleTimeout:       time.Duration(serverCfg.IdleTimeoutSec) * time.Second,
+		ReadHeaderTimeout: time.Duration(serverCfg.ReadHeaderTimeoutSec) * time.Second,
+	}
+
+	go func() {
+		l.Info("HTTP server starting", zap.String("addr", httpServer.Addr))
+
+		err = httpServer.ListenAndServe()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			l.Fatal("HTTP server failed", zap.Error(err))
+		}
+	}()
+
 	<-ctx.Done()
 	l.Info("Gracefully shutting down...")
 
@@ -52,14 +73,6 @@ func main() {
 		time.Duration(serverCfg.ReadHeaderTimeoutSec)*time.Second,
 	)
 	defer cancel()
-
-	httpServer := &http.Server{
-		Addr:              fmt.Sprintf(":%d", serverCfg.Port),
-		ReadHeaderTimeout: time.Duration(serverCfg.ReadHeaderTimeoutSec) * time.Second,
-		Handler:           http.DefaultServeMux,
-	}
-
-	setupRoutes(l, rabbit, infra, workerClient, &serverCfg, httpServer)
 
 	err = httpServer.Shutdown(shutdownCtx)
 	if err != nil {
@@ -95,23 +108,40 @@ func initApp(ctx context.Context) (
 	*database.Infrastructure, *worker.Client,
 	config.ServerConfig,
 ) {
-	logCfg := config.NewLoggerConfig()
+	logCfg, err := config.NewLoggerConfig(".env")
+
+	if err != nil {
+		log.Fatalf("Failed to load DB config: %v", err)
+	}
 	l := logger.NewLogger(&logCfg)
 
-	serverCfg := config.NewServerConfig(l)
+	serverCfg, err := config.NewServerConfig(".env")
 
-	rmqCfg := config.NewRabbitMQConfig()
+	if err != nil {
+		l.Error("Failed to load Server config: %v", zap.Error(err))
+	}
+
+	rmqCfg, err := config.NewRabbitMQConfig(".env")
+
+	if err != nil {
+		l.Error("Failed to load RabbitMQ config: %v", zap.Error(err))
+	}
+
 	rabbit, err := rabbitmq.NewRabbitHandler(rmqCfg.Dsn())
 
 	if err != nil {
-		l.Fatal("Failed to init RabbitMQ", zap.Error(err)) // TODO log
+		l.Fatal("Failed to init RabbitMQ", zap.Error(err))
 	}
 
-	dbCfg := config.NewDBConfig()
+	dbCfg, err := config.NewDBConfig(".env")
+	if err != nil {
+		l.Error("Failed to load DB config: %v", zap.Error(err))
+	}
+
 	infra, err := database.InitInfrastructure(ctx, dbCfg.Dsn())
 
 	if err != nil {
-		l.Fatal("Failed to init DB", zap.Error(err)) // TODO log
+		l.Fatal("Failed to init DB", zap.Error(err))
 	}
 
 	clientTarget := "localhost:50051"
@@ -125,21 +155,23 @@ func initApp(ctx context.Context) (
 
 func setupRoutes(
 	l *zap.Logger, rabbit *rabbitmq.RabbitHandler, infra *database.Infrastructure,
-	workerClient *worker.Client, serverCfg *config.ServerConfig, httpServer *http.Server,
-) {
-	http.Handle("/swagger/", httpSwagger.WrapHandler)
+	workerClient *worker.Client,
+) *http.ServeMux {
+	mux := http.NewServeMux()
 
-	http.HandleFunc("/process/status", func(w http.ResponseWriter, r *http.Request) {
-		status, statusErr := workerClient.GetStatus(r.Context())
+	mux.Handle("/swagger/", httpSwagger.WrapHandler)
 
-		if statusErr != nil {
-			http.Error(w, "Worker unreachable: "+statusErr.Error(), http.StatusInternalServerError)
-
+	mux.HandleFunc("/process/status", func(w http.ResponseWriter, r *http.Request) {
+		status, err := workerClient.GetStatus(r.Context())
+		if err != nil {
+			http.Error(w, "Worker unreachable: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		fmt.Fprintf(w, "Worker ID: %s\nStatus: %s\nActive jobs: %d\n",
-			status.GetWorkerId(), status.GetStatus(), status.GetActiveJobs(),
+			status.GetWorkerId(),
+			status.GetStatus(),
+			status.GetActiveJobs(),
 		)
 	})
 
@@ -151,23 +183,8 @@ func setupRoutes(
 		Log:   l,
 	}
 
-	http.HandleFunc("/process", srv.HandleProcess)
-	http.HandleFunc("/ping", srv.HandlePing)
+	mux.HandleFunc("/process", srv.HandleProcess)
+	mux.HandleFunc("/ping", srv.HandlePing)
 
-	go func() {
-		l.Info("Server starting", zap.String("port", httpServer.Addr))
-
-		srv := &http.Server{
-			Addr:         httpServer.Addr,
-			Handler:      nil,
-			ReadTimeout:  time.Duration(serverCfg.ReadTimeoutSec) * time.Second,
-			WriteTimeout: time.Duration(serverCfg.WriteTimeoutSec) * time.Second,
-			IdleTimeout:  time.Duration(serverCfg.IdleTimeoutSec) * time.Second,
-		}
-
-		err := srv.ListenAndServe()
-		if err != nil {
-			l.Fatal("Failed to start server", zap.String("port", httpServer.Addr), zap.Error(err))
-		}
-	}()
+	return mux
 }

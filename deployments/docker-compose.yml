@@ -15,11 +15,24 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   # 2. The Cache & Job Status Tracker
-  redis:
-    image: redis:7-alpine
-    container_name: backend_redis
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: backend_redis
+  #   ports:
+  #     - "6379:6379"
+
+  dragonfly:
+    image: 'docker.dragonflydb.io/dragonflydb/dragonfly'
+    ulimits:
+      memlock: -1
     ports:
       - "6379:6379"
+    # For better performance, consider `host` mode instead `port` to avoid docker NAT.
+    # `host` mode is NOT currently supported in Swarm Mode.
+    # https://docs.docker.com/compose/compose-file/compose-file-v3/#network_mode
+    # network_mode: "host"
+    volumes:
+      - dragonflydata:/data
 
   # 3. The Message Queue
   rabbitmq:
@@ -29,8 +42,9 @@ services:
       - "5672:5672"   # RabbitMQ broker port
       - "15672:15672" # Management UI port
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: app
+      RABBITMQ_DEFAULT_PASS: strongpassword
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbit tcp_listeners [{\"0.0.0.0\",5672}]"
 
   # 4. Metrics Scraper
   prometheus:
@@ -54,3 +68,4 @@ services:
 
 volumes:
   postgres_data:
+  dragonflydata:

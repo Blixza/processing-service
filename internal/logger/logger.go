@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"main/config"
 	"os"
-	"strings"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -22,11 +21,11 @@ func NewLogger(cfg *config.LoggerConfig) *zap.Logger {
 		config = zap.NewProductionConfig()
 	}
 
-	if isStrTrue(cfg.DisableStacktrace) {
+	if cfg.DisableStacktrace {
 		config.DisableStacktrace = true
 	}
 
-	if isStrTrue(cfg.FormatTime) {
+	if cfg.FormatTime {
 		config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 	}
 
@@ -38,8 +37,4 @@ func NewLogger(cfg *config.LoggerConfig) *zap.Logger {
 	}
 
 	return l
-}
-
-func isStrTrue(s string) bool {
-	return strings.ToLower(s) == "true"
 }
