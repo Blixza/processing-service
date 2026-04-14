@@ -38,7 +38,7 @@ func TestProcessJob_Ping(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	err = handler.ProcessJob(t.Context(), zap.NewNop(), job, infra)
+	err = handler.ProcessJob(t.Context(), zap.NewNop(), job, infra, true)
 	if err != nil {
 		t.Errorf("expected success for ping, got %v", err)
 	}
@@ -63,9 +63,20 @@ func TestProcessJob_FilterImage(t *testing.T) {
 			job: domain.Job{
 				ID:          uuid.New().String(),
 				Type:        domain.JobTypeFilterImage,
-				SourceURL:   "",
+				SourceURL:   ts.URL,
 				CallbackURL: "http://localhost:8081/ping",
 				Filename:    "test_gray.jpg",
+				Payload:     `[{"type": "grayscale"}]`,
+			},
+		},
+		{
+			name: "Fail",
+			job: domain.Job{
+				ID:          uuid.New().String(),
+				Type:        domain.JobTypeFilterImage,
+				SourceURL:   ts.URL,
+				CallbackURL: "http://localhost:8081/ping",
+				Filename:    "killme.jpg",
 				Payload:     `[{"type": "grayscale"}]`,
 			},
 		},
@@ -85,7 +96,7 @@ func TestProcessJob_FilterImage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.job.SourceURL = ts.URL
 
-			err = handler.ProcessJob(t.Context(), zap.NewNop(), tt.job, infra)
+			err = handler.ProcessJob(t.Context(), zap.NewNop(), tt.job, infra, true)
 			if err != nil {
 				t.Errorf("expected success for ping, got %v", err)
 			}

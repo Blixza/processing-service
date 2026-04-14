@@ -12,6 +12,7 @@ services:
     ports:
       - "5433:5432"
     volumes:
+      - ../migrations/schema.sql:/docker-entrypoint-initdb.d/init.sql
       - postgres_data:/var/lib/postgresql/data
 
   # 2. The Cache & Job Status Tracker

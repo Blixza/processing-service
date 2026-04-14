@@ -129,6 +129,11 @@ func initApp(ctx context.Context) (
 
 	rabbit, err := rabbitmq.NewRabbitHandler(rmqCfg.Dsn())
 
+	err = rabbit.SetupQueues()
+	if err != nil {
+		l.Fatal("Failed to configure RabbitMQ topology", zap.Error(err))
+	}
+
 	if err != nil {
 		l.Fatal("Failed to init RabbitMQ", zap.Error(err))
 	}

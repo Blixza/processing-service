@@ -31,33 +31,37 @@ type RabbitHandler struct {
 }
 
 func NewRabbitHandler(dsn string) (*RabbitHandler, error) {
-	conn, err := amqp.Dial(dsn)
-	if err != nil {
-		return nil, err
-	}
+	var conn *amqp.Connection
+	var err error
+	for range 30 {
+		conn, err = amqp.Dial(dsn)
+		if err == nil {
+			ch, err := conn.Channel()
+			if err != nil {
+				return nil, err
+			}
 
-	ch, err := conn.Channel()
-	if err != nil {
-		return nil, err
-	}
+			q, err := ch.QueueDeclare(
+				"job_queue", // name
+				true,        // durable
+				false,       // delete when unused
+				false,       // exclusive
+				false,       // no-wait
+				nil,         // arguments
+			)
+			if err != nil {
+				return nil, err
+			}
 
-	q, err := ch.QueueDeclare(
-		"job_queue", // name
-		true,        // durable
-		false,       // delete when unused
-		false,       // exclusive
-		false,       // no-wait
-		nil,         // arguments
-	)
-	if err != nil {
-		return nil, err
+			return &RabbitHandler{
+				Conn:    conn,
+				Channel: ch,
+				Queue:   q,
+			}, nil
+		}
+		time.Sleep(2 * time.Second)
 	}
-
-	return &RabbitHandler{
-		Conn:    conn,
-		Channel: ch,
-		Queue:   q,
-	}, nil
+	return nil, fmt.Errorf("RabbitMQ timed out after 1 minute: %w", err)
 }
 
 func (r *RabbitHandler) PublishJob(ctx context.Context, job domain.Job) error {
@@ -82,6 +86,7 @@ func (r *RabbitHandler) PublishJob(ctx context.Context, job domain.Job) error {
 func (r *RabbitHandler) ConsumeJobs(
 	ctx context.Context, log *zap.Logger,
 	infra *database.Infrastructure, wg *sync.WaitGroup,
+	registry *metrics.Registry,
 ) error {
 	msgs, err := r.Channel.Consume(
 		r.Queue.Name,
@@ -108,7 +113,7 @@ func (r *RabbitHandler) ConsumeJobs(
 					return
 				}
 				wg.Add(1)
-				go r.handleMessage(ctx, log, d, infra, wg)
+				go r.handleMessage(ctx, log, d, infra, wg, registry)
 			}
 		}
 	}()
@@ -119,32 +124,35 @@ func (r *RabbitHandler) ConsumeJobs(
 func (r *RabbitHandler) handleMessage(
 	ctx context.Context, log *zap.Logger,
 	d amqp.Delivery, infra *database.Infrastructure,
-	wg *sync.WaitGroup) {
+	wg *sync.WaitGroup, registry *metrics.Registry,
+) {
 	defer wg.Done()
 
-	now := time.Now()
+	defer func() {
+		r := recover()
+		if r != nil {
+			log.Error("Worker panicked during processing", zap.Any("panic", r))
+			_ = d.Nack(false, false)
+		}
+	}()
 
+	now := time.Now()
 	var job domain.Job
 
 	err := json.Unmarshal(d.Body, &job)
 	if err != nil {
 		log.Error("Error encoding job", zap.String("job id", job.ID), zap.Error(err))
-		err = d.Ack(false)
-		if err != nil {
-			log.Error("Failed to acknowledge rabbitmq delivery", zap.Error(err))
-		}
+		_ = d.Nack(false, false)
+		return
 	}
 
 	finalStatus := "completed"
 
-	err = r.ProcessJob(context.Background(), log, job, infra)
+	err = r.ProcessJob(ctx, log, job, infra, false)
 	if err != nil {
 		log.Error("Failed to process job", zap.String("job id", job.ID), zap.Error(err))
-
 		finalStatus = "failed"
 	}
-
-	registry := metrics.NewRegistry()
 
 	registry.JobsProcessed.WithLabelValues(finalStatus, job.Type).Inc()
 	registry.ProcessingDuration.Observe(time.Since(now).Seconds())
@@ -154,7 +162,7 @@ func (r *RabbitHandler) handleMessage(
 	callbackTimeoutSec := 5
 	callback.SendWebhook(ctx, log, job.CallbackURL, callbackTimeoutSec, callback.WebhookPayload{
 		JobID:      job.ID,
-		Status:     "completed",
+		Status:     finalStatus,
 		Filename:   job.Filename,
 		FinishedAt: time.Now().Format(time.RFC3339),
 	})
@@ -170,7 +178,15 @@ func (r *RabbitHandler) ProcessJob(
 	log *zap.Logger,
 	job domain.Job,
 	infra *database.Infrastructure,
+	isTest bool,
 ) error {
+	if isTest {
+		if job.Filename == "killme.jpg" {
+			log.Warn("Kill me detected. Panicking")
+			panic("runtime error: invalid memory address or nil pointer deference")
+		}
+	}
+
 	repo := database.NewJobRepository(infra)
 	statusKey := fmt.Sprintf("job:%s:status", job.ID)
 
@@ -272,4 +288,45 @@ func generateFilename(job domain.Job) string {
 	}
 
 	return filename
+}
+
+func (r *RabbitHandler) SetupQueues() error {
+	err := r.Channel.ExchangeDeclare(
+		"dlx_exchange", // name
+		"direct",       // type
+		true,           // durable
+		false,          // auto-deleted
+		false,          // internal
+		false,          // no-wait
+		nil,            // arguments
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.Channel.QueueDeclare(
+		"image_jobs_failed", // name
+		true,                // durable
+		false,               // delete when unused
+		false,               // exclusive
+		false,               // no-wait
+		nil,                 // arguments
+	)
+
+	err = r.Channel.QueueBind("image_jobs_failed", "failed_key", "dlx_exchange", false, nil)
+
+	args := amqp.Table{
+		"x-dead-letter-exchange":    "dlx_exchange",
+		"x-dead-letter-routing-key": "failed_key",
+	}
+
+	_, err = r.Channel.QueueDeclare(
+		"image_jobs", // name
+		true,         // durable
+		false,        // delete when unused
+		false,        // exclusive
+		false,        // no-wait
+		args,         // PASS THE DLX ARGS HERE
+	)
+	return err
 }

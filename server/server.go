@@ -69,14 +69,14 @@ func (s *Server) HandleProcess(w http.ResponseWriter, r *http.Request) {
 	err = s.Repo.CreateJob(r.Context(), newJob)
 	if err != nil {
 		http.Error(w, "Failed to save job", http.StatusInternalServerError)
-
+		s.Log.Error("Failed to save job", zap.String("job id", newJob.ID), zap.Error(err))
 		return
 	}
 
 	err = s.Queue.PublishJob(r.Context(), newJob)
 	if err != nil {
 		http.Error(w, "Failed to queue job", http.StatusInternalServerError)
-
+		s.Log.Error("Failed to queue job", zap.String("job id", newJob.ID), zap.Error(err))
 		return
 	}
 

@@ -25,7 +25,7 @@ func (s *GrpcServer) GetWorkerStatus(_ context.Context, _ *worker.StatusRequest)
 }
 
 func (s *GrpcServer) StreamJobLogs(req *worker.LogRequest, stream worker.WorkerService_StreamJobLogsServer) error {
-	s.Log.Info("Streaming logs for job", zap.String("job id", req.GetJobId())) // TODO log
+	s.Log.Info("Streaming logs for job", zap.String("job id", req.GetJobId()))
 
 	for i := 1; i <= 5; i++ {
 		resp := &worker.LogResponse{

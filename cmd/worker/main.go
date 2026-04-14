@@ -7,6 +7,7 @@ import (
 	"main/config"
 	"main/internal/database"
 	"main/internal/logger"
+	"main/internal/metrics"
 	"main/internal/transport/grpc/worker"
 	"main/internal/transport/rabbitmq"
 	proto "main/proto"
@@ -66,11 +67,18 @@ func main() {
 
 	defer rabbit.Conn.Close()
 
+	// err = rabbit.SetupQueues()
+	// if err != nil {
+	// 	l.Fatal("Failed to configure RabbitMQ topology", zap.Error(err))
+	// }
+
 	l.Info("Worker started. Listening for messages...")
 
 	var wg sync.WaitGroup
 
-	err = rabbit.ConsumeJobs(ctx, l, infra, &wg)
+	registry := metrics.NewRegistry()
+
+	err = rabbit.ConsumeJobs(ctx, l, infra, &wg, registry)
 	if err != nil {
 		l.Fatal("Failed to start consumer", zap.Error(err))
 	}
