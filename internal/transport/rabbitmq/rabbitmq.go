@@ -18,64 +18,63 @@ import (
 	"go.uber.org/zap"
 )
 
-const ConsumerTag = "worker-01"
+// const ConsumerTag = "worker-01"
 
 type QueueHandler interface {
 	PublishJob(ctx context.Context, job domain.Job) error
 }
 
 type RabbitHandler struct {
-	Conn    *amqp.Connection
-	Channel *amqp.Channel
-	Queue   amqp.Queue
+	Conn        *amqp.Connection
+	QueueName   string
+	ConsumerTag string
+	Dsn         string
 }
 
 func NewRabbitHandler(dsn string) (*RabbitHandler, error) {
-	var conn *amqp.Connection
-	var err error
-	for range 30 {
-		conn, err = amqp.Dial(dsn)
-		if err == nil {
-			ch, err := conn.Channel()
-			if err != nil {
-				return nil, err
-			}
-
-			q, err := ch.QueueDeclare(
-				"job_queue", // name
-				true,        // durable
-				false,       // delete when unused
-				false,       // exclusive
-				false,       // no-wait
-				nil,         // arguments
-			)
-			if err != nil {
-				return nil, err
-			}
-
-			return &RabbitHandler{
-				Conn:    conn,
-				Channel: ch,
-				Queue:   q,
-			}, nil
-		}
-		time.Sleep(2 * time.Second)
+	conn, err := amqp.Dial(dsn)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("RabbitMQ timed out after 1 minute: %w", err)
+
+	handler := &RabbitHandler{
+		Conn:      conn,
+		QueueName: "image_jobs",
+		Dsn:       dsn,
+	}
+
+	tempCh, err := conn.Channel()
+	if err != nil {
+		return nil, err
+	}
+	defer tempCh.Close()
+
+	err = handler.SetupQueues(tempCh)
+	if err != nil {
+		return nil, err
+	}
+
+	return handler, nil
 }
 
 func (r *RabbitHandler) PublishJob(ctx context.Context, job domain.Job) error {
+	ch, err := r.Conn.Channel()
+	if err != nil {
+		return fmt.Errorf("failed to open channel for publishing: %w", err)
+	}
+	defer ch.Close()
+
 	body, err := json.Marshal(job)
 	if err != nil {
 		return err
 	}
 
-	return r.Channel.PublishWithContext(
+	return ch.PublishWithContext(
 		ctx,
-		"",           // exchange
-		r.Queue.Name, // routing key
-		false,        // mandatory
-		false,        // immediate
+		"",          // exchange
+		r.QueueName, // routing key
+		false,       // mandatory
+		false,       // immediate
 		amqp.Publishing{
 			ContentType: "application/json",
 			Body:        body,
@@ -83,48 +82,122 @@ func (r *RabbitHandler) PublishJob(ctx context.Context, job domain.Job) error {
 	)
 }
 
+func (r *RabbitHandler) ConsumeJobsWithRetry(
+	ctx context.Context, log *zap.Logger,
+	infra *database.Infrastructure, wg *sync.WaitGroup,
+	registry *metrics.Registry, restartIntervalSec int,
+	isTest bool,
+) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		if r.Conn == nil || r.Conn.IsClosed() {
+			log.Info("Connection lost. Dialing back..")
+			newConn, err := amqp.Dial(r.Dsn)
+			if err != nil {
+				log.Error("Dialing failed", zap.Error(err))
+				time.Sleep(time.Duration(restartIntervalSec) * time.Second)
+				continue
+			}
+			r.Conn = newConn
+
+			tempCh, err := r.Conn.Channel()
+			if err != nil {
+				log.Error("Failed to setup queues for a new connection", zap.Error(err))
+			}
+
+			r.SetupQueues(tempCh)
+			tempCh.Close()
+
+			log.Info("Successfully connected back")
+		}
+
+		err := r.ConsumeJobs(ctx, log, infra, wg, registry, isTest)
+		if err != nil {
+			log.Error("Failed to start worker. Restarting in 5s...", zap.Error(err))
+
+			select {
+			case <-time.After(time.Duration(restartIntervalSec) * time.Second):
+				continue
+			case <-ctx.Done():
+				return
+			}
+		}
+
+	}
+}
+
 func (r *RabbitHandler) ConsumeJobs(
 	ctx context.Context, log *zap.Logger,
 	infra *database.Infrastructure, wg *sync.WaitGroup,
-	registry *metrics.Registry,
+	registry *metrics.Registry, isTest bool,
 ) error {
-	msgs, err := r.Channel.Consume(
-		r.Queue.Name,
-		ConsumerTag, // consumer tag
-		false,       // auto-ack (for now)
+	ch, err := r.Conn.Channel()
+	if err != nil {
+		return err
+	}
+	defer ch.Close()
+
+	args := amqp.Table{
+		"x-dead-letter-exchange":    "dlx_exchange",
+		"x-dead-letter-routing-key": "failed_key",
+	}
+
+	_, err = ch.QueueDeclare(
+		r.QueueName, // name
+		true,        // durable
+		false,       // delete when unused
 		false,       // exclusive
-		false,       // no-local
 		false,       // no-wait
-		nil,         // args
+		args,        // arguments
 	)
 	if err != nil {
 		return err
 	}
 
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				log.Info("Context cancelled, stopping consumer loop")
+	currentTag := fmt.Sprintf("worker--%d", time.Now().Unix())
 
-				return
-			case d, ok := <-msgs:
-				if !ok {
-					return
-				}
-				wg.Add(1)
-				go r.handleMessage(ctx, log, d, infra, wg, registry)
+	msgs, err := ch.Consume(
+		r.QueueName,
+		currentTag, // consumer tag
+		false,      // auto-ack (for now)
+		false,      // exclusive
+		false,      // no-local
+		false,      // no-wait
+		nil,        // args
+	)
+	if err != nil {
+		return err
+	}
+
+	r.ConsumerTag = currentTag
+
+	log.Info("Worker started", zap.String("tag", currentTag))
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info("Context cancelled, stopping consumer loop")
+			return nil
+		case d, ok := <-msgs:
+			if !ok {
+				return fmt.Errorf("rabbit channel closed unexpectedly")
 			}
+			wg.Add(1)
+			go r.handleMessage(ctx, log, d, infra, wg, registry, isTest)
 		}
-	}()
-
-	return nil
+	}
 }
 
 func (r *RabbitHandler) handleMessage(
 	ctx context.Context, log *zap.Logger,
 	d amqp.Delivery, infra *database.Infrastructure,
 	wg *sync.WaitGroup, registry *metrics.Registry,
+	isTest bool,
 ) {
 	defer wg.Done()
 
@@ -142,11 +215,19 @@ func (r *RabbitHandler) handleMessage(
 	err := json.Unmarshal(d.Body, &job)
 	if err != nil {
 		log.Error("Error encoding job", zap.String("job id", job.ID), zap.Error(err))
-		_ = d.Nack(false, false)
 		return
 	}
 
 	finalStatus := "completed"
+
+	if isTest {
+		if job.Filename == "killme.jpg" {
+			log.Warn("Kill me detected. Panicking")
+			_ = d.Nack(false, false)
+			r.Conn.Close()
+			panic("runtime error: invalid memory address or nil pointer deference")
+		}
+	}
 
 	err = r.ProcessJob(ctx, log, job, infra, false)
 	if err != nil {
@@ -180,13 +261,6 @@ func (r *RabbitHandler) ProcessJob(
 	infra *database.Infrastructure,
 	isTest bool,
 ) error {
-	if isTest {
-		if job.Filename == "killme.jpg" {
-			log.Warn("Kill me detected. Panicking")
-			panic("runtime error: invalid memory address or nil pointer deference")
-		}
-	}
-
 	repo := database.NewJobRepository(infra)
 	statusKey := fmt.Sprintf("job:%s:status", job.ID)
 
@@ -290,8 +364,8 @@ func generateFilename(job domain.Job) string {
 	return filename
 }
 
-func (r *RabbitHandler) SetupQueues() error {
-	err := r.Channel.ExchangeDeclare(
+func (r *RabbitHandler) SetupQueues(ch *amqp.Channel) error {
+	err := ch.ExchangeDeclare(
 		"dlx_exchange", // name
 		"direct",       // type
 		true,           // durable
@@ -304,7 +378,7 @@ func (r *RabbitHandler) SetupQueues() error {
 		return err
 	}
 
-	_, err = r.Channel.QueueDeclare(
+	_, err = ch.QueueDeclare(
 		"image_jobs_failed", // name
 		true,                // durable
 		false,               // delete when unused
@@ -313,14 +387,14 @@ func (r *RabbitHandler) SetupQueues() error {
 		nil,                 // arguments
 	)
 
-	err = r.Channel.QueueBind("image_jobs_failed", "failed_key", "dlx_exchange", false, nil)
+	err = ch.QueueBind("image_jobs_failed", "failed_key", "dlx_exchange", false, nil)
 
 	args := amqp.Table{
 		"x-dead-letter-exchange":    "dlx_exchange",
 		"x-dead-letter-routing-key": "failed_key",
 	}
 
-	_, err = r.Channel.QueueDeclare(
+	_, err = ch.QueueDeclare(
 		"image_jobs", // name
 		true,         // durable
 		false,        // delete when unused

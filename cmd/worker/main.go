@@ -78,10 +78,8 @@ func main() {
 
 	registry := metrics.NewRegistry()
 
-	err = rabbit.ConsumeJobs(ctx, l, infra, &wg, registry)
-	if err != nil {
-		l.Fatal("Failed to start consumer", zap.Error(err))
-	}
+	// not getting error here because it's being handled inside the func
+	rabbit.ConsumeJobsWithRetry(ctx, l, infra, &wg, registry, serverCfg.WorkerRestartIntervalSec)
 
 	go startGrpcServer(ctx, l, &serverCfg)
 
@@ -98,11 +96,6 @@ func main() {
 	<-ctx.Done()
 	l.Info("Worker gracefully shutting down...")
 
-	err = rabbit.Channel.Cancel(rabbitmq.ConsumerTag, false)
-	if err != nil {
-		l.Error("Failed to cancel consumer", zap.Error(err))
-	}
-
 	l.Info("Waiting for active tasks to complete...")
 
 	closeTasks(rabbit, infra, l)
@@ -113,12 +106,7 @@ func main() {
 }
 
 func closeTasks(rabbit *rabbitmq.RabbitHandler, infra *database.Infrastructure, l *zap.Logger) {
-	err := rabbit.Channel.Close()
-	if err != nil {
-		l.Error("Failed to close RabbitMQ channel", zap.Error(err))
-	}
-
-	err = rabbit.Conn.Close()
+	err := rabbit.Conn.Close()
 	if err != nil {
 		l.Error("Failed to close RabbitMQ connection", zap.Error(err))
 	}

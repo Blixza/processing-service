@@ -81,11 +81,6 @@ func main() {
 
 	l.Info("Closing infrastructure connections")
 
-	err = rabbit.Channel.Close()
-	if err != nil {
-		l.Error("Failed to close RabbitMQ channel", zap.Error(err))
-	}
-
 	err = rabbit.Conn.Close()
 	if err != nil {
 		l.Error("Failed to close RabbitMQ connection", zap.Error(err))
@@ -129,10 +124,16 @@ func initApp(ctx context.Context) (
 
 	rabbit, err := rabbitmq.NewRabbitHandler(rmqCfg.Dsn())
 
-	err = rabbit.SetupQueues()
+	setupCh, err := rabbit.Conn.Channel()
+	if err != nil {
+		l.Fatal("Failed to open setup channel", zap.Error(err))
+	}
+
+	err = rabbit.SetupQueues(setupCh)
 	if err != nil {
 		l.Fatal("Failed to configure RabbitMQ topology", zap.Error(err))
 	}
+	setupCh.Close()
 
 	if err != nil {
 		l.Fatal("Failed to init RabbitMQ", zap.Error(err))
