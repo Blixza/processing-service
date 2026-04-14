@@ -94,6 +94,16 @@ func TestProcessJob_FilterImage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				r := recover()
+				if tt.job.Filename == "killme.jpg" {
+					if r == nil {
+						t.Errorf("The code did not panic, but it should have for killme.jpg")
+					}
+				} else if r != nil {
+					t.Errorf("The code panicked unexpectedly: %v", r)
+				}
+			}()
 			tt.job.SourceURL = ts.URL
 
 			err = handler.ProcessJob(t.Context(), zap.NewNop(), tt.job, infra, true)
