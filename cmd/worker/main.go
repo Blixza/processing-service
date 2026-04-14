@@ -79,7 +79,7 @@ func main() {
 	registry := metrics.NewRegistry()
 
 	// not getting error here because it's being handled inside the func
-	rabbit.ConsumeJobsWithRetry(ctx, l, infra, &wg, registry, serverCfg.WorkerRestartIntervalSec, false)
+	rabbit.ConsumeJobsWithRetry(ctx, l, infra, &wg, registry, serverCfg.WorkerRestartIntervalSec)
 
 	go startGrpcServer(ctx, l, &serverCfg)
 

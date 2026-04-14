@@ -123,6 +123,9 @@ func initApp(ctx context.Context) (
 	}
 
 	rabbit, err := rabbitmq.NewRabbitHandler(rmqCfg.Dsn())
+	if err != nil {
+		l.Fatal("Failed to init RabbitMQ", zap.Error(err))
+	}
 
 	setupCh, err := rabbit.Conn.Channel()
 	if err != nil {
@@ -133,10 +136,9 @@ func initApp(ctx context.Context) (
 	if err != nil {
 		l.Fatal("Failed to configure RabbitMQ topology", zap.Error(err))
 	}
-	setupCh.Close()
-
+	err = setupCh.Close()
 	if err != nil {
-		l.Fatal("Failed to init RabbitMQ", zap.Error(err))
+		l.Fatal("Failed to close setup channel")
 	}
 
 	dbCfg, err := config.NewDBConfig(".env")

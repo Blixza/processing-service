@@ -3,6 +3,7 @@ package rabbitmq
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"main/internal/callback"
 	"main/internal/database"
@@ -82,11 +83,39 @@ func (r *RabbitHandler) PublishJob(ctx context.Context, job domain.Job) error {
 	)
 }
 
+func (r *RabbitHandler) redial(log *zap.Logger, restartIntervalSec int) error {
+	log.Info("Connection lost. Dialing back..")
+	newConn, err := amqp.Dial(r.Dsn)
+	if err != nil {
+		log.Error("Dialing failed", zap.Error(err))
+		time.Sleep(time.Duration(restartIntervalSec) * time.Second)
+		return err
+	}
+	r.Conn = newConn
+
+	tempCh, err := r.Conn.Channel()
+	if err != nil {
+		log.Error("Failed to create setup channel from new connection", zap.Error(err))
+	}
+
+	err = r.SetupQueues(tempCh)
+	if err != nil {
+		log.Error("Failed to setup queues for new connection", zap.Error(err))
+	}
+	err = tempCh.Close()
+	if err != nil {
+		log.Error("Failed to close setup channel", zap.Error(err))
+	}
+
+	log.Info("Successfully connected back")
+
+	return nil
+}
+
 func (r *RabbitHandler) ConsumeJobsWithRetry(
 	ctx context.Context, log *zap.Logger,
 	infra *database.Infrastructure, wg *sync.WaitGroup,
 	registry *metrics.Registry, restartIntervalSec int,
-	isTest bool,
 ) {
 	for {
 		select {
@@ -96,27 +125,13 @@ func (r *RabbitHandler) ConsumeJobsWithRetry(
 		}
 
 		if r.Conn == nil || r.Conn.IsClosed() {
-			log.Info("Connection lost. Dialing back..")
-			newConn, err := amqp.Dial(r.Dsn)
+			err := r.redial(log, restartIntervalSec)
 			if err != nil {
-				log.Error("Dialing failed", zap.Error(err))
-				time.Sleep(time.Duration(restartIntervalSec) * time.Second)
 				continue
 			}
-			r.Conn = newConn
-
-			tempCh, err := r.Conn.Channel()
-			if err != nil {
-				log.Error("Failed to setup queues for a new connection", zap.Error(err))
-			}
-
-			r.SetupQueues(tempCh)
-			tempCh.Close()
-
-			log.Info("Successfully connected back")
 		}
 
-		err := r.ConsumeJobs(ctx, log, infra, wg, registry, isTest)
+		err := r.ConsumeJobs(ctx, log, infra, wg, registry)
 		if err != nil {
 			log.Error("Failed to start worker. Restarting in 5s...", zap.Error(err))
 
@@ -127,14 +142,13 @@ func (r *RabbitHandler) ConsumeJobsWithRetry(
 				return
 			}
 		}
-
 	}
 }
 
 func (r *RabbitHandler) ConsumeJobs(
 	ctx context.Context, log *zap.Logger,
 	infra *database.Infrastructure, wg *sync.WaitGroup,
-	registry *metrics.Registry, isTest bool,
+	registry *metrics.Registry,
 ) error {
 	ch, err := r.Conn.Channel()
 	if err != nil {
@@ -185,10 +199,10 @@ func (r *RabbitHandler) ConsumeJobs(
 			return nil
 		case d, ok := <-msgs:
 			if !ok {
-				return fmt.Errorf("rabbit channel closed unexpectedly")
+				return errors.New("rabbit channel closed unexpectedly")
 			}
 			wg.Add(1)
-			go r.handleMessage(ctx, log, d, infra, wg, registry, isTest)
+			go r.handleMessage(ctx, log, d, infra, wg, registry)
 		}
 	}
 }
@@ -197,15 +211,17 @@ func (r *RabbitHandler) handleMessage(
 	ctx context.Context, log *zap.Logger,
 	d amqp.Delivery, infra *database.Infrastructure,
 	wg *sync.WaitGroup, registry *metrics.Registry,
-	isTest bool,
 ) {
 	defer wg.Done()
 
 	defer func() {
 		r := recover()
 		if r != nil {
-			log.Error("Worker panicked during processing", zap.Any("panic", r))
-			_ = d.Nack(false, false)
+			log.Warn("Worker panicked during processing", zap.Any("panic", r))
+			err := d.Nack(false, false)
+			if err != nil {
+				log.Error("Failed to close channel", zap.Error(err))
+			}
 		}
 	}()
 
@@ -219,15 +235,6 @@ func (r *RabbitHandler) handleMessage(
 	}
 
 	finalStatus := "completed"
-
-	if isTest {
-		if job.Filename == "killme.jpg" {
-			log.Warn("Kill me detected. Panicking")
-			_ = d.Nack(false, false)
-			r.Conn.Close()
-			panic("runtime error: invalid memory address or nil pointer deference")
-		}
-	}
 
 	err = r.ProcessJob(ctx, log, job, infra, false)
 	if err != nil {
@@ -261,6 +268,12 @@ func (r *RabbitHandler) ProcessJob(
 	infra *database.Infrastructure,
 	isTest bool,
 ) error {
+	if isTest {
+		if job.Filename == "killme.jpg" {
+			panic("runtime error: invalid memory address or nil pointer deference")
+		}
+	}
+
 	repo := database.NewJobRepository(infra)
 	statusKey := fmt.Sprintf("job:%s:status", job.ID)
 
@@ -386,8 +399,14 @@ func (r *RabbitHandler) SetupQueues(ch *amqp.Channel) error {
 		false,               // no-wait
 		nil,                 // arguments
 	)
+	if err != nil {
+		return fmt.Errorf("failed to declare queue: %w", err)
+	}
 
 	err = ch.QueueBind("image_jobs_failed", "failed_key", "dlx_exchange", false, nil)
+	if err != nil {
+		return fmt.Errorf("failed to bind queue: %w", err)
+	}
 
 	args := amqp.Table{
 		"x-dead-letter-exchange":    "dlx_exchange",
