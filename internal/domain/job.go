@@ -4,8 +4,6 @@ import "time"
 
 const (
 	JobTypeFilterImage = "FILTER_IMAGE"
-	JobTypeNotifyUser  = "NOTIFY_USER"
-	JobTypeExportData  = "EXPORT_DATA"
 	JobTypePing        = "PING"
 )
 

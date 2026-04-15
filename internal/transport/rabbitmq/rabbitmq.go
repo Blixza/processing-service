@@ -320,9 +320,6 @@ func (r *RabbitHandler) ProcessJob(
 		} else {
 			log.Info("Image saved", zap.String("path", fmt.Sprintf("storage/%s", job.Filename)))
 		}
-	case domain.JobTypeNotifyUser:
-		log.Info("Sending notification", zap.String("id", job.ID))
-		// TODO
 	default:
 		log.Warn("unknown job type received", zap.String("type", job.Type))
 	}
