@@ -91,6 +91,11 @@ func main() {
 		l.Error("Failed to close Redis", zap.Error(err))
 	}
 
+	err = workerClient.Close()
+	if err != nil {
+		l.Error("Failed to close worker client", zap.Error(err))
+	}
+
 	if infra.DB != nil {
 		infra.DB.Close()
 	}
@@ -152,7 +157,7 @@ func initApp(ctx context.Context) (
 		l.Fatal("Failed to init DB", zap.Error(err))
 	}
 
-	clientTarget := "localhost:50051"
+	clientTarget := fmt.Sprintf("localhost:%d", serverCfg.GrpcPort)
 	workerClient, err := worker.NewWorkerClient(clientTarget)
 	if err != nil {
 		l.Fatal("Failed to create worker client", zap.String("worker client target", clientTarget), zap.Error(err))

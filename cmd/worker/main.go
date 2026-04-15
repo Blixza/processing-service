@@ -71,6 +71,7 @@ func main() {
 	// if err != nil {
 	// 	l.Fatal("Failed to configure RabbitMQ topology", zap.Error(err))
 	// }
+	go startGrpcServer(ctx, l, &serverCfg)
 
 	l.Info("Worker started. Listening for messages...")
 
@@ -81,7 +82,6 @@ func main() {
 	// not getting error here because it's being handled inside the func
 	rabbit.ConsumeJobsWithRetry(ctx, l, infra, &wg, registry, serverCfg.WorkerRestartIntervalSec)
 
-	go startGrpcServer(ctx, l, &serverCfg)
 
 	httpServer := &http.Server{
 		Addr:              fmt.Sprintf(":%d", serverCfg.MetricsPort),
